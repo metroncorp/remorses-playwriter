@@ -93,7 +93,7 @@ playwriter -s 1 -e 'await state.page.click("button")'
 playwriter -s 1 -e 'await state.page.title()'
 
 # Take a screenshot
-playwriter -s 1 -e 'await state.page.screenshot({ path: "screenshot.png", scale: "css" })'
+playwriter -s 1 -e 'await state.page.screenshot({ path: "/absolute/path/to/screenshot.png", scale: "css" })'
 
 # Get accessibility snapshot
 playwriter -s 1 -e 'await snapshot({ page: state.page })'
@@ -209,6 +209,7 @@ You can collaborate with the user - they can help with captchas, difficult eleme
 - **Wait for load**: use `state.page.waitForLoadState('domcontentloaded')` not `state.page.waitForEvent('load')` - waitForEvent times out if already loaded
 - **Minimize timeouts**: prefer proper waits (`waitForSelector`, `waitForPageLoad`) over `state.page.waitForTimeout()`. Short timeouts (1-2s) are acceptable for non-deterministic events like animations, tab opens, or async UI updates where no specific selector is available
 - **Snapshot before screenshot**: always use `snapshot()` first to understand page state (text-based, fast, cheap). Only use `screenshot` when you specifically need visual/spatial information. Never take a screenshot just to check if a page loaded or to read text content — snapshot gives you that instantly without burning image tokens
+- **Always use absolute file paths for Playwright artifact APIs**: for `page.screenshot({ path })`, `locator.screenshot({ path })`, `elementHandle.screenshot({ path })`, `page.pdf({ path })`, `download.saveAs(path)`, and `video.saveAs(path)`, always pass an absolute path. Relative paths are resolved by Playwright client internals, not the sandboxed `fs`, so they may use the relay server cwd instead of your session cwd.
 - **Snapshot replaces page.evaluate() for inspection**: do NOT write `page.evaluate()` calls to manually query class names, bounding boxes, child counts, or visibility flags. `snapshot()` already shows every interactive element with its text, role, and a ready-to-use locator. If you catch yourself writing `document.querySelector` or `getBoundingClientRect` inside evaluate — stop and use `snapshot()` instead. Reserve `page.evaluate()` for actions that modify page state (e.g., `localStorage.clear()`, scroll manipulation) or extract non-DOM data (e.g., `window.__CONFIG__`)
 
 ## interaction feedback loop
@@ -601,7 +602,7 @@ Instead, use simpler alternatives (single download via `a.click()`, store data i
 
 ```js
 const [download] = await Promise.all([state.page.waitForEvent('download'), state.page.click('button.download')])
-await download.saveAs(`/tmp/${download.suggestedFilename()}`)
+await download.saveAs(`/absolute/path/${download.suggestedFilename()}`)
 ```
 
 **iFrames** - two approaches depending on what you need:
@@ -806,7 +807,7 @@ await screenshotWithAccessibilityLabels({ page: state.page })
 
 Labels are color-coded: yellow=links, orange=buttons, coral=inputs, pink=checkboxes, peach=sliders, salmon=menus, amber=tabs.
 
-**resizeImageForAgent** - shrink an image so it consumes fewer tokens when read back into context. The resized image is automatically included in the response (visible to the LLM). `await resizeImageForAgent({ input: './screenshot.png' })`. Also accepts `width`, `height`, `maxDimension`, `quality`, `format` (default: `'png'`), `output`. Alias: `resizeImage`.
+**resizeImageForAgent** - shrink an image so it consumes fewer tokens when read back into context. The resized image is automatically included in the response (visible to the LLM). `await resizeImageForAgent({ input: '/absolute/path/to/screenshot.png' })`. Also accepts `width`, `height`, `maxDimension`, `quality`, `format` (default: `'png'`), `output`. Alias: `resizeImage`.
 
 **recording.start / recording.stop** - record the page as a video at native FPS (30-60fps). Uses `chrome.tabCapture` so **recording survives page navigation**. Auto-overlays a ghost cursor that follows mouse actions. Requires user to have clicked the Playwriter extension icon on the tab. Auto-resizes viewport to 16:9 (override with `aspectRatio: null`). Auto-stops after 15 min (override with `maxDurationMs`).
 
@@ -815,7 +816,7 @@ For demos, use interaction methods (`locator.click()`, `page.mouse.move()`) inst
 ```js
 await recording.start({
   page: state.page,
-  outputPath: './recording.mp4',
+  outputPath: '/absolute/path/to/recording.mp4',
   frameRate: 30, // default
   audio: false, // default (tab audio)
   videoBitsPerSecond: 2500000,
@@ -869,7 +870,7 @@ await el.click()
 Always use `scale: 'css'` to avoid 2-4x larger images on high-DPI displays:
 
 ```js
-await state.page.screenshot({ path: 'shot.png', scale: 'css' })
+await state.page.screenshot({ path: '/absolute/path/to/shot.png', scale: 'css' })
 ```
 
 If you want to read back the image file into context, resize it first so it consumes fewer tokens:
@@ -1048,7 +1049,7 @@ await state.page.setViewportSize({ width: 1280, height: 720 })
 ### region screenshot (zoom equivalent)
 
 ```js
-await state.page.screenshot({ path: 'region.png', scale: 'css', clip: { x: 100, y: 200, width: 400, height: 300 } })
+await state.page.screenshot({ path: '/absolute/path/to/region.png', scale: 'css', clip: { x: 100, y: 200, width: 400, height: 300 } })
 ```
 
 Prefer locator-based actions over coordinates — locators are stable across scroll/resize, auto-wait for elements, and don't require screenshot round-trips that burn ~800 image tokens per cycle.

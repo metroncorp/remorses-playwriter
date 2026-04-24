@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+1. **Document absolute paths for saved artifacts** — the skill docs now explicitly tell agents to use absolute paths for Playwright artifact APIs like `page.screenshot({ path })`, `page.pdf({ path })`, `download.saveAs(path)`, and `video.saveAs(path)`. These paths are resolved inside Playwright, not through the sandboxed `fs`, so relative paths can land under the relay server cwd instead of the agent's session folder.
+
 ## 0.1.0
 
 1. **New in-page toolbar with pin mode** — every attached tab now gets a floating toolbar you can use to pin elements directly from the page. Pinning copies a natural-language prompt plus the exact `playwriter -e '…'` code needed to inspect that element later, so pasted prompts are immediately useful to an agent instead of just exposing a fragile DOM handle.
