@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.91
+
+### Changes
+
+- **Pinned element copy now includes React inspection**. Toolbar pins and the right-click context menu now copy a tiny `inspectPinnedElement(url, expression)` command that prints the pinned element `outerHTML` plus React component info when the installed Playwriter CLI supports it. Non-React elements still inspect cleanly with `react: null`.
+
 ## 0.0.90
 
 ### Changes

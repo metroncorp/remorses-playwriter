@@ -326,8 +326,7 @@ export function initPlaywriterToolbar(): void {
     else hideOverlay()
   }
 
-  // Synchronous DOM snapshot for the clipboard summary. Baked into the eval
-  // Pick the page by URL with first-page fallback, then log outerHTML of the pinned element.
+  // Build a tiny eval that delegates all logging and React inspection to Playwriter.
   // JSON.stringify does NOT escape literal ' characters, so "Don't save"
   // stays "Don't save" in the output. That would break the outer bash '…'
   // wrapper. Replace ' with \u0027 — valid JSON, parses back to ' in the
@@ -335,10 +334,7 @@ export function initPlaywriterToolbar(): void {
   // into the bash 'playwriter -e …' wrapper regardless of element text.
   function buildInspectionCode(n: number, url: string): string {
     const URL_LIT = JSON.stringify(url).replace(/'/g, '\\u0027')
-    return (
-      `state.page=context.pages().find(x=>x.url()===${URL_LIT})||context.pages()[0]; ` +
-      `console.log(await state.page.evaluate(()=>globalThis.playwriterPinnedElem${n}?.outerHTML))`
-    )
+    return `inspectPinnedElement(${URL_LIT},"globalThis.playwriterPinnedElem${n}")`
   }
 
   function onClick(e: MouseEvent): void {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4
+
+1. **Add React component inspection for pinned elements** — agents can now call `getReactComponentInfo({ locator })` to get the nearest React component name, parent hierarchy, sanitized props, and source locations when React exposes them. The in-page pin flows use a short `inspectPinnedElement(url, expression)` helper that prints the DOM and React info internally. Non-React elements return `null` instead of throwing.
+
+## 0.1.3
+
+1. **Expand the performance profiling guide with CPU profiling follow-up** — the generated `performance-profiling.md` resource now points readers at `profano` for deeper `.cpuprofile` analysis when web vitals and request sizes are not enough, and suggests keeping reusable profiling snippets in the dots repo such as `~/.config/opencode/`.
+
 ## 0.1.2
 
 1. **Add a website performance profiling guide** — Playwriter now ships a generated `performance-profiling.md` resource that shows how to measure TTFB, FCP, LCP, CLS, heavy requests, and interactivity blockers with Playwriter plus raw CDP. The guide focuses on concise good/needs-work thresholds, how to identify what blocked first paint or interactivity, and concrete command snippets you can run against a real site.

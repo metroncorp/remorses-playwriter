@@ -3,7 +3,7 @@
  * Used by both MCP and CLI to execute Playwright code with persistent state.
  */
 
-import { Page, Frame, Browser, BrowserContext, chromium, Locator, FrameLocator } from '@xmorse/playwright-core'
+import { Page, Frame, Browser, BrowserContext, chromium, Locator, FrameLocator, ElementHandle } from '@xmorse/playwright-core'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -21,7 +21,7 @@ import { ICDPSession, getCDPSessionForPage } from './cdp-session.js'
 import { Debugger } from './debugger.js'
 import { Editor } from './editor.js'
 import { getStylesForLocator, formatStylesAsText, type StylesResult } from './styles.js'
-import { getReactSource, type ReactSourceLocation } from './react-source.js'
+import { getReactSource, getReactComponentInfo, type ReactSourceLocation } from './react-source.js'
 import { ScopedFS } from './scoped-fs.js'
 import {
   screenshotWithAccessibilityLabels,
@@ -104,14 +104,14 @@ export function getAutoReturnExpression(code: string): string | null {
     if (
       expr.type === 'AssignmentExpression' ||
       expr.type === 'UpdateExpression' ||
-      (expr.type === 'UnaryExpression' && (expr as acorn.UnaryExpression).operator === 'delete')
+      (expr.type === 'UnaryExpression' && expr.operator === 'delete')
     ) {
       return null
     }
 
     // Don't auto-return sequence expressions that contain assignments
     if (expr.type === 'SequenceExpression') {
-      const hasAssignment = expr.expressions.some((e: acorn.Expression) => e.type === 'AssignmentExpression')
+      const hasAssignment = expr.expressions.some((e) => e.type === 'AssignmentExpression')
       if (hasAssignment) {
         return null
       }
@@ -1043,6 +1043,47 @@ export class PlaywrightExecutor {
         return getReactSource({ locator: options.locator, cdp })
       }
 
+      const getReactComponentInfoFn = async (options: { locator: Locator | ElementHandle }) => {
+        const targetPage = await (async (): Promise<Page | null> => {
+          if ('page' in options.locator) {
+            return options.locator.page()
+          }
+
+          return (await options.locator.ownerFrame())?.page() ?? null
+        })()
+        if (!targetPage) {
+          throw new Error('Could not get page from locator')
+        }
+        const cdp = await getCDPSession({ page: targetPage })
+        return getReactComponentInfo({ locator: options.locator, cdp })
+      }
+
+      const inspectPinnedElement = async (pageUrl: string, elementExpression: string) => {
+        const targetPage = context.pages().find((candidate) => candidate.url() === pageUrl) || context.pages()[0]
+        if (!targetPage) {
+          throw new Error('No Playwright pages are available')
+        }
+
+        this.userState.page = targetPage
+        const handle = (await targetPage.evaluateHandle((expression) => {
+          return Function(`return (${expression})`)()
+        }, elementExpression)).asElement()
+
+        const result = await (async () => {
+          if (!handle) {
+            return { url: targetPage.url(), outerHTML: null, react: null }
+          }
+          return {
+            url: targetPage.url(),
+            outerHTML: await handle.evaluate((el) => el.outerHTML),
+            react: await getReactComponentInfoFn({ locator: handle }),
+          }
+        })()
+
+        console.log(result)
+        return result
+      }
+
       const screenshotCollector: ScreenshotResult[] = []
       // Separate collector for images produced by resizeImageForAgent() calls.
       // These get merged into result.images so the CLI can emit them via Kitty Graphics.
@@ -1146,6 +1187,8 @@ export class PlaywrightExecutor {
         getStylesForLocator: getStylesForLocatorFn,
         formatStylesAsText,
         getReactSource: getReactSourceFn,
+        getReactComponentInfo: getReactComponentInfoFn,
+        inspectPinnedElement,
         screenshotWithAccessibilityLabels: screenshotWithAccessibilityLabelsFn,
         resizeImageForAgent: resizeImageForAgentFn,
         // Backward-compatible alias for resizeImageForAgent

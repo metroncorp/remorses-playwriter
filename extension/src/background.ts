@@ -1761,6 +1761,11 @@ function updateContextMenuVisibility(): void {
   chrome.contextMenus?.update('playwriter-pin-element', { visible: isConnected })
 }
 
+function buildPinnedElementInspectionCode(options: { pinName: string; url: string }): string {
+  const URL_LIT = JSON.stringify(options.url).replace(/'/g, '\\u0027')
+  return `inspectPinnedElement(${URL_LIT},"globalThis.${options.pinName}")`
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (import.meta.env.TESTING) return
   if (!__PLAYWRITER_OPEN_WELCOME_PAGE__) return
@@ -1990,12 +1995,6 @@ chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
 
   const debuggee = { tabId: tab.id }
 
-  const connectedTabs = Array.from(store.getState().tabs.entries())
-    .filter(([_, t]) => t.state === 'connected')
-    .sort((a, b) => (a[1].attachOrder ?? 0) - (b[1].attachOrder ?? 0))
-  const pageIndex = connectedTabs.findIndex(([id]) => id === tab.id)
-  const hasMultiplePages = connectedTabs.length > 1
-
   try {
     // Allocate the next pin name by reading and incrementing the shared MAIN-world
     // counter (window.__playwriterPinCount). This ensures right-click and toolbar
@@ -2030,9 +2029,8 @@ chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
       return
     }
 
-    const clipboardText = hasMultiplePages
-      ? `globalThis.${name} (page ${pageIndex}, ${tab.url || 'unknown url'})`
-      : `globalThis.${name}`
+    const code = buildPinnedElementInspectionCode({ pinName: name, url: tab.url || '' })
+    const clipboardText = "see the element I pinned in the playwriter tab `playwriter -e '" + code + "'`"
 
     await chrome.debugger.sendCommand(debuggee, 'Runtime.evaluate', {
       expression: `

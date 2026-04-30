@@ -921,12 +921,24 @@ describe('CDP Session Tests', () => {
             <body>
                 <div id="root"></div>
                 <script>
-                    function MyComponent() {
-                        return React.createElement('button', { id: 'react-btn' }, 'Click me');
+                    function SaveButton(props) {
+                        return React.createElement('button', { id: 'react-btn' }, props.label);
+                    }
+                    function Panel() {
+                        return React.createElement('section', null, React.createElement(SaveButton, {
+                          label: 'Click me',
+                          count: 3,
+                          config: { variant: 'primary' },
+                          onClick: () => {}
+                        }));
+                    }
+                    function App() {
+                        return React.createElement(Panel);
                     }
                     const root = ReactDOM.createRoot(document.getElementById('root'));
-                    root.render(React.createElement(MyComponent));
+                    root.render(React.createElement(App));
                 </script>
+                <button id="plain-btn">Plain</button>
             </body>
             </html>
         `)
@@ -946,40 +958,54 @@ describe('CDP Session Tests', () => {
     const btnCount = await btn.count()
     expect(btnCount).toBe(1)
 
-    const hasBippyBefore = await cdpPage!.evaluate(() => !!(globalThis as any).__bippy)
+    const hasBippyBefore = await cdpPage!.evaluate(() => !!globalThis.__bippy)
     expect(hasBippyBefore).toBe(false)
 
     const wsUrl = getCdpUrl({ port: TEST_PORT })
     const cdpSession = await getCDPSessionForPage({ page: cdpPage! })
 
-    const { getReactSource } = await import('./react-source.js')
+    const { getReactSource, getReactComponentInfo } = await import('./react-source.js')
     const source = await getReactSource({ locator: btn, cdp: cdpSession })
+    const info = await getReactComponentInfo({ locator: btn, cdp: cdpSession })
+    const plainInfo = await getReactComponentInfo({ locator: cdpPage!.locator('#plain-btn'), cdp: cdpSession })
 
-    const hasBippyAfter = await cdpPage!.evaluate(() => !!(globalThis as any).__bippy)
+    const hasBippyAfter = await cdpPage!.evaluate(() => !!globalThis.__bippy)
     expect(hasBippyAfter).toBe(true)
 
     const hasFiber = await btn.evaluate((el) => {
-      const bippy = (globalThis as any).__bippy
+      const bippy = globalThis.__bippy
+      if (!bippy) return false
       const fiber = bippy.getFiberFromHostInstance(el)
       return !!fiber
     })
     expect(hasFiber).toBe(true)
 
     const componentName = await btn.evaluate((el) => {
-      const bippy = (globalThis as any).__bippy
+      const bippy = globalThis.__bippy
+      if (!bippy) return null
       const fiber = bippy.getFiberFromHostInstance(el)
       let current = fiber
       while (current) {
         if (bippy.isCompositeFiber(current)) {
           return bippy.getDisplayName(current.type)
         }
-        current = current.return
+        current = current.return ?? null
       }
       return null
     })
-    expect(componentName).toBe('MyComponent')
+    expect(componentName).toBe('SaveButton')
+    expect(plainInfo).toBe(null)
+    expect(info?.componentName).toBe('SaveButton')
+    expect(info?.hierarchy.map((item) => item.componentName)).toEqual(['SaveButton', 'Panel', 'App'])
+    expect(info?.props).toEqual({
+      label: 'Click me',
+      count: 3,
+      config: { variant: 'primary' },
+      onClick: '[function]',
+    })
 
     console.log('Component name from fiber:', componentName)
+    console.log('React component info:', info)
     console.log('Source location (null for UMD React, works on local dev servers with JSX transform):', source)
 
     await browser.close()

@@ -755,6 +755,19 @@ const source = await getReactSource({ locator: state.page.locator('[data-testid=
 // => { fileName, lineNumber, columnNumber, componentName }
 ```
 
+**getReactComponentInfo** - get best-effort React component info for an element. Returns `null` for non-React elements and never throws just because an element was not rendered by React. Source locations are usually only available in React dev builds. Props are sanitized and truncated so functions, DOM nodes, circular refs, and huge objects do not flood the output.
+
+```js
+const info = await getReactComponentInfo({ locator: state.page.locator('[data-testid="submit-btn"]') })
+// => { componentName, source, hierarchy, props } | null
+```
+
+**inspectPinnedElement** - inspect a Playwriter pinned element and print the element `outerHTML` plus React component info when available. Used by the in-page toolbar and right-click copy flow.
+
+```js
+await inspectPinnedElement('https://example.com', 'globalThis.playwriterPinnedElem1')
+```
+
 **getStylesForLocator** - inspect CSS styles applied to an element, like browser DevTools "Styles" panel. Useful for debugging styling issues, finding where a CSS property is defined (file:line), and checking inherited styles. Returns selector, source location, and declarations for each matching rule. ALWAYS fetch `https://playwriter.dev/resources/styles-api.md` first with curl or webfetch tool.
 
 ```js
