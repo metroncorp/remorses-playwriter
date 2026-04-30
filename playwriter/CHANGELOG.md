@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+1. **Add a website performance profiling guide** — Playwriter now ships a generated `performance-profiling.md` resource that shows how to measure TTFB, FCP, LCP, CLS, heavy requests, and interactivity blockers with Playwriter plus raw CDP. The guide focuses on concise good/needs-work thresholds, how to identify what blocked first paint or interactivity, and concrete command snippets you can run against a real site.
+
 ## 0.1.1
 
 1. **Document absolute paths for saved artifacts** — the skill docs now explicitly tell agents to use absolute paths for Playwright artifact APIs like `page.screenshot({ path })`, `page.pdf({ path })`, `download.saveAs(path)`, and `video.saveAs(path)`. These paths are resolved inside Playwright, not through the sandboxed `fs`, so relative paths can land under the relay server cwd instead of the agent's session folder.
