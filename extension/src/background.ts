@@ -2030,7 +2030,7 @@ chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
     }
 
     const code = buildPinnedElementInspectionCode({ pinName: name, url: tab.url || '' })
-    const clipboardText = "see the element I pinned in the playwriter tab `playwriter -e '" + code + "'`"
+    const clipboardText = "playwriter -e '" + code + "'"
 
     await chrome.debugger.sendCommand(debuggee, 'Runtime.evaluate', {
       expression: `

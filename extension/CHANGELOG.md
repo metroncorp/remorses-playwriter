@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.92
+
+### Changes
+
+- **Pinned element copy is command-only**. Toolbar pins and the right-click context menu now copy only `playwriter -e 'inspectPinnedElement(...)'`, without the natural-language prefix, so pasted clipboard text is shorter and shell-ready.
+
 ## 0.0.91
 
 ### Changes

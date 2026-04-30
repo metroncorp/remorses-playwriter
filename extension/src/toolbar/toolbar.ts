@@ -351,14 +351,10 @@ export function initPlaywriterToolbar(): void {
 
     flashElement(target)
 
-    // Copy a natural-language prompt the agent can read: "see the element I
-    // pinned in the playwriter tab `playwriter -e '<code>'`". The agent reads
-    // this, adds their own `-s <session>` (or uses PLAYWRITER_SESSION), and
-    // runs it. `code` is JSON.stringify'd so it never contains single quotes
-    // and slots cleanly into the '…' wrapper.
+    // Copy only the command so pasting it into a shell or agent prompt stays compact.
     const url = location.href
     const code = buildInspectionCode(n, url)
-    const clipboardText = "see the element I pinned in the playwriter tab `playwriter -e '" + code + "'`"
+    const clipboardText = "playwriter -e '" + code + "'"
     copyText(clipboardText)
     showToast(`Copied pin #${n}`, target.getBoundingClientRect())
     setPinMode(false)
