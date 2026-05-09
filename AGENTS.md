@@ -81,7 +81,9 @@ then click the reload button on the extension card in Chrome. the extension has 
 
 ## extension version
 
-after EVERY change made inside extension/ folder you MUST bump the manifest.json version and update the CHANGELOG.md file. then create a git tag with extension@version after committing.
+after EVERY change made inside extension/ folder you MUST bump the manifest.json version. then create a git tag with extension@version after committing.
+
+Do not manually edit CHANGELOG.md files for extension changes. If the extension change also affects a public package release note, add a changeset for that public package instead.
 
 ### testing
 
@@ -170,13 +172,17 @@ curl -sL https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/mast
 
 you can list other files in that folder on github to read more if you need to control things like DOM, performance, etc
 
-## changelogs
+## changesets
 
-when you do an any change, update relevant CHANGELOG.md files for each package.
+this repo uses Changesets for public package release notes and version bumps.
 
-also bump package.json versions and IMPORTANTLY also the extension/manifest.json version!
+For every fix or feature that affects a public package, add one `.changeset/*.md` file at the repo root. Do not edit package CHANGELOG.md files directly and do not manually bump public package versions; changesets are consumed at publish time to update versions and changelogs.
 
-you also MUST always bump the playwright core package.json version too on any changes made there. so during publishing we know if that package needs to also be published, first, before publishing playwriter. checking if its version is already publishing in npm with `npm show @xmorse/playwright-core version`
+Use `patch` for fixes and `minor` for new features. Include every affected public package in the changeset frontmatter, for example `playwriter` or `@xmorse/playwright-core`. Skip private packages such as `mcp-extension`.
+
+Before adding a changeset, run `gh issue list --state all --limit 20` and reference a matching issue with `Fixes #123` on its own line when the change fixes one.
+
+If a change touches extension code, still bump `extension/manifest.json` because Chrome extension releases are separate from npm package changesets.
 
 ## debugging playwriter mcp issues
 
@@ -196,7 +202,7 @@ relevant files are located in paths like playwright/packages/playwright-core/src
 
 ignore everything that is outside of playwright/packages/playwright-core in the playwright submodule, it is unused
 
-EVERY update to playwright code that changes its api or behaviour MUST be followed by a bump in version and update in playwright-core/CHANGELOG.md file. on release of the playwriter package then the playwright-core package must be released first, always using `pnpm publish` command. no need to update version in playwriter package.json because we use the :workspace version.
+EVERY update to playwright code that changes its api or behaviour MUST be followed by a changeset for `@xmorse/playwright-core`. on release of the playwriter package then the playwright-core package must be released first, always using `pnpm publish` command. no need to update version in playwriter package.json because we use the :workspace version.
 
 ### adding or updating @xmorse/playwright-core public APIs
 
@@ -271,11 +277,9 @@ if you add runtime code (a new method, property, or type) to the fork without up
    pnpm playwright:build  # 0.1s
    ```
 
-6. **bump version** in `playwright/packages/playwright-core/package.json`
+6. **add a changeset** for `@xmorse/playwright-core` describing the public API or behavior change
 
-7. **update CHANGELOG.md** in `playwright/packages/playwright-core/CHANGELOG.md`
-
-8. **verify** — run `pnpm typecheck` in the `playwriter/` package to confirm zero errors
+7. **verify** — run `pnpm typecheck` in the `playwriter/` package to confirm zero errors
 
 ### submodule setup
 
@@ -288,8 +292,6 @@ cd playwright && git branch
 # if not on playwriter branch
 git checkout playwriter
 ```
-
-make sure to always bump the package json and update the
 
 ### bootstrapping the repo
 
