@@ -356,7 +356,7 @@ export function initPlaywriterToolbar(): void {
     const code = buildInspectionCode(n, url)
     const clipboardText = "playwriter -e '" + code + "'"
     copyText(clipboardText)
-    showToast(`Copied pin #${n}`, target.getBoundingClientRect())
+    showToast('Copied playwriter element reference, use it in your agent prompt', target.getBoundingClientRect())
     setPinMode(false)
   }
 
