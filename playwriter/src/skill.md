@@ -203,9 +203,18 @@ You can collaborate with the user - they can help with captchas, difficult eleme
 - `page` - a default page (may be shared with other agents). Prefer creating your own page and storing it in `state` (see "working with pages")
 - `context` - browser context, access all pages via `context.pages()`
 - `require` - load Node.js modules (e.g., `const fs = require('node:fs')`). ESM `import` is not available in the sandbox
-- Node.js globals: `setTimeout`, `setInterval`, `fetch`, `URL`, `Buffer`, `crypto`, etc.
+- Node.js globals: `setTimeout`, `setInterval`, `fetch`, `URL`, `Buffer`, `crypto`, `process`, etc.
+
+**Not available in the sandbox:** `__dirname`, `__filename`, `import`.
 
 **Important:** `state` is **session-isolated** but pages are **shared** across all sessions. See "working with pages" for how to avoid interference.
+
+**Sandboxed `fs` write restrictions:** `require('node:fs')` is scoped. Writes (writeFileSync, mkdirSync, etc.) only succeed in:
+- The **directory where `playwriter` CLI was invoked** (the session's cwd)
+- `/tmp`
+- The OS temp directory (`os.tmpdir()`, e.g. `/var/folders/.../T/` on macOS)
+
+Writing to any other path (e.g. `~/Downloads`, `~/Desktop`) throws `EPERM: operation not permitted, access outside allowed directories`. To save files elsewhere, write to a temp path first, then move the file using a shell command outside the sandbox.
 
 ## rules
 

@@ -66,6 +66,7 @@ const usefulGlobals = {
   AbortController,
   AbortSignal,
   structuredClone,
+  process,
 } as const
 
 /**
@@ -1248,6 +1249,16 @@ export class PlaywrightExecutor {
         // Ghost Browser API - only works in Ghost Browser, mirrors chrome.ghostPublicAPI etc
         chrome: chromeGhostBrowser,
         ...usefulGlobals,
+        // Override process.cwd() to return the session's cwd (where the CLI was invoked)
+        // instead of the relay server's cwd
+        process: this.sessionCwd
+          ? new Proxy(process, {
+              get(target, prop, receiver) {
+                if (prop === 'cwd') return () => self.sessionCwd!
+                return Reflect.get(target, prop, receiver)
+              },
+            })
+          : process,
       }
 
       const vmContext = vm.createContext(vmContextObj)
