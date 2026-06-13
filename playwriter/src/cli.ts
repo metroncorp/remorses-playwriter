@@ -27,8 +27,6 @@ import { discoverChromeInstances, resolveDirectInput, type DiscoveredInstance } 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const cliRelayEnv = { PLAYWRITER_AUTO_ENABLE: '1' }
-
 const cli = goke('playwriter')
 
 cli
@@ -53,7 +51,7 @@ cli
           import('./package-paths.js'),
         ])
 
-        await ensureRelayServer({ logger: console, env: cliRelayEnv })
+        await ensureRelayServer({ logger: console })
 
         const browserPath = resolveBrowserExecutablePath({ browserPath: binaryPath })
         const extensionPath = getBundledExtensionPath()
@@ -237,7 +235,7 @@ async function executeCode(options: {
 
   // Ensure relay server is running (only for local)
   if (!host && !process.env.PLAYWRITER_HOST) {
-    const restarted = await ensureRelayServer({ logger: console, env: cliRelayEnv })
+    const restarted = await ensureRelayServer({ logger: console })
     if (restarted) {
       const connectedExtensions = await waitForConnectedExtensions({
         logger: console,
@@ -445,7 +443,7 @@ cli
     let extensions: ExtensionStatus[] = []
 
     if (isLocal) {
-      await ensureRelayServer({ logger: console, env: cliRelayEnv })
+      await ensureRelayServer({ logger: console })
       extensions = await waitForConnectedExtensions({
         timeoutMs: 12000,
         pollIntervalMs: 250,
@@ -492,7 +490,7 @@ cli
         const response = await fetch(`${serverUrl}/cli/session/new`, {
           method: 'POST',
           headers: buildAuthHeaders({ token: options.token, json: true }),
-          body: JSON.stringify({ extensionId, cwd, autoEnable: true }),
+          body: JSON.stringify({ extensionId, cwd }),
         })
         if (!response.ok) {
           const text = await response.text()
@@ -551,7 +549,7 @@ cli
           const response = await fetch(`${serverUrl}/cli/session/new`, {
             method: 'POST',
             headers: buildAuthHeaders({ token: options.token, json: true }),
-            body: JSON.stringify({ extensionId: selected.extensionId, cwd, autoEnable: true }),
+            body: JSON.stringify({ extensionId: selected.extensionId, cwd }),
           })
           if (!response.ok) {
             const text = await response.text()
@@ -577,7 +575,7 @@ cli
 
 async function ensureRelayForSessionCreation(isLocal: boolean): Promise<void> {
   if (isLocal) {
-    await ensureRelayServer({ logger: console, env: cliRelayEnv })
+    await ensureRelayServer({ logger: console })
   }
 }
 
@@ -661,7 +659,7 @@ cli
   .option('--token <token>', 'Authentication token (or use PLAYWRITER_TOKEN env var)')
   .action(async (options) => {
     if (!options.host && !process.env.PLAYWRITER_HOST) {
-      await ensureRelayServer({ logger: console, env: cliRelayEnv })
+      await ensureRelayServer({ logger: console })
     }
 
     const serverUrl = await getServerUrl(options.host)
@@ -754,7 +752,7 @@ cli
     const serverUrl = await getServerUrl(options.host)
 
     if (!options.host && !process.env.PLAYWRITER_HOST) {
-      await ensureRelayServer({ logger: console, env: cliRelayEnv })
+      await ensureRelayServer({ logger: console })
     }
 
     try {
@@ -786,7 +784,7 @@ cli
     const serverUrl = await getServerUrl(options.host)
 
     if (!options.host && !process.env.PLAYWRITER_HOST) {
-      await ensureRelayServer({ logger: console, env: cliRelayEnv })
+      await ensureRelayServer({ logger: console })
     }
 
     try {
@@ -926,7 +924,7 @@ cli
 
     // Start relay if local so the extension can connect, then fetch in parallel
     if (isLocal) {
-      await ensureRelayServer({ logger: console, env: cliRelayEnv })
+      await ensureRelayServer({ logger: console })
     }
 
     const [extensions, directInstances] = await Promise.all([

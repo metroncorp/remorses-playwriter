@@ -1279,7 +1279,7 @@ describe('Auto-enable Tests', () => {
 
     const previousAutoEnable = process.env.PLAYWRITER_AUTO_ENABLE
     delete process.env.PLAYWRITER_AUTO_ENABLE
-    const browser = await chromium.connectOverCDP(getCdpUrl({ port: TEST_PORT, autoEnable: true })).finally(() => {
+    const browser = await chromium.connectOverCDP(getCdpUrl({ port: TEST_PORT })).finally(() => {
       if (previousAutoEnable === undefined) {
         delete process.env.PLAYWRITER_AUTO_ENABLE
         return

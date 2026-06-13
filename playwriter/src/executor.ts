@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 import * as acorn from 'acorn'
 import { createSmartDiff } from './diff-utils.js'
-import { getCdpUrl, parseRelayHost } from './utils.js'
+import { getCdpUrl, parseRelayHost, shouldAutoEnablePlaywriter } from './utils.js'
 import { getExtensionOutdatedWarning } from './relay-client.js'
 import { waitForPageLoad, WaitForPageLoadOptions, WaitForPageLoadResult } from './wait-for-page-load.js'
 import { ICDPSession, getCDPSessionForPage } from './cdp-session.js'
@@ -150,7 +150,7 @@ const EXTENSION_NOT_CONNECTED_ERROR = `The Playwriter Chrome extension is not co
 2. Clicked the extension icon on a tab to enable it (or refreshed the page if just installed)`
 
 const NO_PAGES_AVAILABLE_ERROR =
-  'No Playwright pages are available. Enable Playwriter on a tab or set PLAYWRITER_AUTO_ENABLE=1 to auto-create one.'
+  'No Playwright pages are available. Enable Playwriter on a tab or unset PLAYWRITER_AUTO_ENABLE=false to auto-create one.'
 
 const MAX_LOGS_PER_PAGE = 5000
 
@@ -227,7 +227,6 @@ export interface CdpConfig {
   port?: number
   token?: string
   extensionId?: string | null
-  autoEnable?: boolean
   /** Direct CDP WebSocket URL — bypasses relay + extension, connects straight to Chrome */
   directCdpUrl?: string
 }
@@ -1418,7 +1417,7 @@ export class PlaywrightExecutor {
     }
   }
 
-  // When extension is connected but has no pages, auto-create only if PLAYWRITER_AUTO_ENABLE is set.
+  // When extension is connected but has no pages, auto-create unless PLAYWRITER_AUTO_ENABLE=false disables it.
   // In direct CDP mode, always create a page (no extension check needed).
   private async ensurePageForContext(options: { context: BrowserContext; timeout: number }): Promise<Page> {
     const { context, timeout } = options
@@ -1440,7 +1439,7 @@ export class PlaywrightExecutor {
       throw new Error(EXTENSION_NOT_CONNECTED_ERROR)
     }
 
-    if (!process.env.PLAYWRITER_AUTO_ENABLE) {
+    if (!shouldAutoEnablePlaywriter()) {
       const waitTimeoutMs = Math.min(timeout, 1000)
       const startTime = Date.now()
       while (Date.now() - startTime < waitTimeoutMs) {
