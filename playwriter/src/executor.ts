@@ -227,6 +227,7 @@ export interface CdpConfig {
   port?: number
   token?: string
   extensionId?: string | null
+  autoEnable?: boolean
   /** Direct CDP WebSocket URL — bypasses relay + extension, connects straight to Chrome */
   directCdpUrl?: string
 }

@@ -523,8 +523,9 @@ export async function startPlayWriterCDPRelayServer({
 
   // Auto-create initial tab when PLAYWRITER_AUTO_ENABLE is set and no targets exist.
   // This allows Playwright to connect and immediately have a page to work with.
-  async function maybeAutoCreateInitialTab(extensionId: string): Promise<void> {
-    if (!process.env.PLAYWRITER_AUTO_ENABLE) {
+  async function maybeAutoCreateInitialTab(options: { extensionId: string; autoEnable: boolean }): Promise<void> {
+    const { extensionId, autoEnable } = options
+    if (!autoEnable && !process.env.PLAYWRITER_AUTO_ENABLE) {
       return
     }
     const conn = getExtensionConnection(extensionId)
@@ -654,12 +655,14 @@ export async function startPlayWriterCDPRelayServer({
     params,
     sessionId,
     source,
+    autoEnable,
   }: {
     extensionId: string | null
     method: CDPCommand['method'] | (string & {})
     params: CDPCommand['params']
     sessionId?: CDPCommand['sessionId']
     source?: CDPCommand['source']
+    autoEnable: boolean
   }) {
     const conn = getExtensionConnection(extensionId)
     const connectedTargets = conn?.connectedTargets || new Map<string, relayState.ConnectedTarget>()
@@ -699,7 +702,7 @@ export async function startPlayWriterCDPRelayServer({
           break
         }
         if (conn) {
-          await maybeAutoCreateInitialTab(conn.id)
+          await maybeAutoCreateInitialTab({ extensionId: conn.id, autoEnable })
         }
         // Forward auto-attach so Chrome emits iframe Target.attachedToTarget events.
         // Playwright relies on these (with parentFrameId) when reconnecting over CDP.
@@ -1109,6 +1112,7 @@ export async function startPlayWriterCDPRelayServer({
       const clientId = c.req.param('clientId') || 'default'
       const url = new URL(c.req.url, 'http://localhost')
       const requestedExtensionId = url.searchParams.get('extensionId')
+      const autoEnable = url.searchParams.get('autoEnable') === '1'
       // When extensionId is explicit, resolve directly. Otherwise use fallback which
       // handles single-extension and uniquely-active-extension cases (#52).
       const resolvedExtension = requestedExtensionId
@@ -1200,6 +1204,7 @@ export async function startPlayWriterCDPRelayServer({
               params,
               sessionId,
               source,
+              autoEnable,
             })
 
             if (method === 'Target.setAutoAttach' && !sessionId) {
@@ -1978,6 +1983,7 @@ export async function startPlayWriterCDPRelayServer({
   app.post('/cli/session/new', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       extensionId?: string | null
+      autoEnable?: boolean
       cwd?: string
       /** Direct CDP WebSocket URL — bypasses extension, connects straight to Chrome */
       cdpEndpoint?: string
@@ -2031,6 +2037,7 @@ export async function startPlayWriterCDPRelayServer({
     const executor = manager.getExecutor({
       sessionId,
       cwd,
+      cdpConfig: { host: '127.0.0.1', port, token, extensionId: conn.stableKey, autoEnable: body.autoEnable === true },
       sessionMetadata: {
         extensionId: conn.stableKey,
         browser: conn.info.browser || null,

@@ -1277,7 +1277,15 @@ describe('Auto-enable Tests', () => {
     })
     expect(tabCountBefore).toBe(0)
 
-    const browser = await chromium.connectOverCDP(getCdpUrl({ port: TEST_PORT }))
+    const previousAutoEnable = process.env.PLAYWRITER_AUTO_ENABLE
+    delete process.env.PLAYWRITER_AUTO_ENABLE
+    const browser = await chromium.connectOverCDP(getCdpUrl({ port: TEST_PORT, autoEnable: true })).finally(() => {
+      if (previousAutoEnable === undefined) {
+        delete process.env.PLAYWRITER_AUTO_ENABLE
+        return
+      }
+      process.env.PLAYWRITER_AUTO_ENABLE = previousAutoEnable
+    })
 
     const pages = browser.contexts()[0].pages()
     expect(pages.length).toBeGreaterThan(0)

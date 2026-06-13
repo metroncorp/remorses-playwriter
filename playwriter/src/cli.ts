@@ -492,7 +492,7 @@ cli
         const response = await fetch(`${serverUrl}/cli/session/new`, {
           method: 'POST',
           headers: buildAuthHeaders({ token: options.token, json: true }),
-          body: JSON.stringify({ extensionId, cwd }),
+          body: JSON.stringify({ extensionId, cwd, autoEnable: true }),
         })
         if (!response.ok) {
           const text = await response.text()
@@ -551,7 +551,7 @@ cli
           const response = await fetch(`${serverUrl}/cli/session/new`, {
             method: 'POST',
             headers: buildAuthHeaders({ token: options.token, json: true }),
-            body: JSON.stringify({ extensionId: selected.extensionId, cwd }),
+            body: JSON.stringify({ extensionId: selected.extensionId, cwd, autoEnable: true }),
           })
           if (!response.ok) {
             const text = await response.text()
