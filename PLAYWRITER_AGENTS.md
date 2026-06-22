@@ -406,3 +406,45 @@ jq -r '.direction + "\t" + (.message.method // "response")' ~/.playwriter/cdp.js
 iframes are a complex feature in CDP and playwriter. to test a real world scenario follow the document ./docs/framer-iframe-snapshot-guide.md manually. using global playwriter cli. restarting relay killing port 19988 first.
 
 do this when user asks to try framer iframes.
+
+# patchright-playwriter fork (@playwriter/patchright-core)
+
+we maintain a separate repo at https://github.com/remorses/patchright-playwriter that produces `@playwriter/patchright-core`. this package combines patchright's stealth patches (undetected Playwright, bypasses Cloudflare/Datadome/etc.) with our playwriter extensions.
+
+the fork lives at `~/Documents/GitHub/patchright-playwriter/`. read its `AGENTS.md` for full build, publish, and sync instructions.
+
+## applying new playwright fork changes to patchright-playwriter
+
+when we add features or fixes to our playwright fork (the `./playwright` submodule in this repo), those same changes need to be applied to the patchright-playwriter fork so `@playwriter/patchright-core` stays in sync.
+
+1. find the last sync date by checking the patchright-playwriter repo's `playwriter.patch` header or commit history:
+```bash
+cd ~/Documents/GitHub/patchright-playwriter
+git log --oneline -5
+```
+
+2. in this repo, generate a diff of new changes since that date:
+```bash
+cd ~/Documents/GitHub/playwriter/playwright
+BASE=$(git merge-base HEAD upstream/main)
+git log --oneline $BASE..HEAD -- packages/playwright-core/src/ | head -20
+# generate the full diff
+git diff $BASE..HEAD -- packages/playwright-core/src/ > /tmp/playwriter-changes.patch
+```
+
+3. in the patchright-playwriter repo, rebuild from scratch then apply:
+```bash
+cd ~/Documents/GitHub/patchright-playwriter
+bash utils/rebuild_local_package.sh
+cd playwright
+git apply --reject /tmp/playwriter-changes.patch
+# resolve .rej files if any, then regenerate playwriter.patch
+```
+
+4. regenerate the playwriter.patch:
+```bash
+cd playwright
+git log --oneline | head -5  # find the patchright-patches commit hash
+git diff <patchright-commit>..HEAD > ../playwriter.patch
+cd .. && git add playwriter.patch && git commit -m 'update playwriter.patch with latest changes'
+```

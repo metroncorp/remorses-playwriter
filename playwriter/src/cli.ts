@@ -104,8 +104,13 @@ cli
   .option('-s, --session <name>', 'Session ID (required for -e, get one with `playwriter session new`)')
   .option('-e, --eval <code>', 'Execute JavaScript code and exit, read https://playwriter.dev/SKILL.md for usage')
   .option('-f, --file <path>', 'Execute JavaScript from a file and exit')
+  .option('--patchright', 'Use @playwriter/patchright-core for stealth mode (bypasses bot detection)')
   .option('--timeout [ms]', z.number().default(10000).describe('Execution timeout in milliseconds'))
   .action(async (options) => {
+    if (options.patchright) {
+      process.env.PLAYWRITER_PATCHRIGHT = '1'
+    }
+
     if (options.eval && options.file) {
       console.error('Error: -e and -f cannot be used together.')
       process.exit(1)
@@ -354,8 +359,13 @@ cli
   .option('--host <host>', 'Remote relay server host')
   .option('--token <token>', 'Authentication token (or use PLAYWRITER_TOKEN env var)')
   .option('--browser <key>', 'Browser key when multiple browsers are available')
+  .option('--patchright', 'Use @playwriter/patchright-core for stealth mode (bypasses bot detection)')
   .option('--direct [endpoint]', 'Use direct CDP connection without the extension. Enable debugging first at chrome://inspect/#remote-debugging or launch Chrome with --remote-debugging-port=9222. Auto-discovers instances or accepts an explicit ws:// endpoint')
   .action(async (options) => {
+    if (options.patchright) {
+      process.env.PLAYWRITER_PATCHRIGHT = '1'
+    }
+
     const isLocal = !options.host && !process.env.PLAYWRITER_HOST
     // goke 6.6: optional-value flags are string | undefined
     //   `--direct ws://...` → 'ws://...' (explicit endpoint)

@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { chromium } from '@xmorse/playwright-core'
+// NOTE: browser-config uses chromium synchronously (executablePath) during browser start.
+// Patchright mode only affects connectOverCDP in executor.ts, not browser binary lookup.
 
 type BrowserLookupOptions = {
   browserPath?: string

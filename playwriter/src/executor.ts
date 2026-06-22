@@ -3,7 +3,8 @@
  * Used by both MCP and CLI to execute Playwright code with persistent state.
  */
 
-import { Page, Frame, Browser, BrowserContext, chromium, Locator, FrameLocator, ElementHandle } from '@xmorse/playwright-core'
+import type { Page, Frame, Browser, BrowserContext, Locator, FrameLocator, ElementHandle } from '@xmorse/playwright-core'
+import { getChromium, isPatchrightEnabled } from './playwright-import.js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -38,6 +39,13 @@ import { createRecordingApi } from './screen-recording.js'
 import { createDemoVideo } from './ffmpeg.js'
 import { type GhostCursorClientOptions } from './ghost-cursor.js'
 import { GhostCursorController } from './ghost-cursor-controller.js'
+import {
+  detectCaptcha,
+  solveWithCapSolver,
+  injectCaptchaToken,
+  type SolveCaptchaOptions,
+  type SolveCaptchaResult,
+} from './captcha-solver.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -680,6 +688,7 @@ export class PlaywrightExecutor {
   private async connectToBrowser(): Promise<{ browser: Browser; page: Page; context: BrowserContext }> {
     if (this.isDirectCdpMode()) {
       // Direct CDP: connect straight to Chrome, no relay or extension needed
+      const chromium = await getChromium()
       const browser = await chromium.connectOverCDP(this.cdpConfig.directCdpUrl!)
 
       browser.on('disconnected', () => {
@@ -718,6 +727,7 @@ export class PlaywrightExecutor {
     this.warnIfExtensionOutdated(extensionStatus.playwriterVersion)
 
     const cdpUrl = getCdpUrl(this.cdpConfig)
+    const chromium = await getChromium()
     const browser = await chromium.connectOverCDP(cdpUrl)
 
     browser.on('disconnected', () => {
@@ -1237,6 +1247,53 @@ export class PlaywrightExecutor {
         return typed.result
       })
 
+      const solveCaptcha = async (options?: SolveCaptchaOptions): Promise<SolveCaptchaResult> => {
+        const targetPage = options?.page || page
+        const apiKey = options?.apiKey || process.env.CAPSOLVER_API_KEY || process.env.CAPTCHA_API_KEY
+        if (!apiKey) {
+          throw new Error(
+            'solveCaptcha: no API key found. Set CAPSOLVER_API_KEY env var or pass apiKey option.',
+          )
+        }
+
+        // Auto-detect or use provided type/sitekey
+        let type = options?.type
+        let sitekey = options?.sitekey
+        if (!type || !sitekey) {
+          const detected = await detectCaptcha(targetPage)
+          if (!detected) {
+            throw new Error(
+              'solveCaptcha: no supported CAPTCHA detected on the page. ' +
+                'Pass type and sitekey explicitly if the widget is inside an iframe or loaded dynamically.',
+            )
+          }
+          type = type || detected.type
+          sitekey = sitekey || detected.sitekey
+        }
+
+        customConsole.log(`[captcha] Detected ${type} (sitekey: ${sitekey.slice(0, 16)}...)`)
+
+        const token = await solveWithCapSolver({
+          apiKey,
+          type,
+          sitekey,
+          websiteURL: targetPage.url(),
+          action: options?.action,
+          pollInterval: options?.pollInterval,
+          maxAttempts: options?.maxAttempts,
+          logger: { log: (...args: any[]) => customConsole.log(...args) },
+        })
+
+        await injectCaptchaToken(targetPage, {
+          type,
+          token,
+          submit: options?.submit,
+        })
+
+        customConsole.log(`[captcha] Token injected successfully`)
+        return { type, sitekey, token, solved: true }
+      }
+
       let vmContextObj: any = {
         page,
         context,
@@ -1260,6 +1317,7 @@ export class PlaywrightExecutor {
         getReactSource: getReactSourceFn,
         getReactComponentInfo: getReactComponentInfoFn,
         inspectPinnedElement,
+        solveCaptcha,
         screenshotWithAccessibilityLabels: screenshotWithAccessibilityLabelsFn,
         resizeImageForAgent: resizeImageForAgentFn,
         // Backward-compatible alias for resizeImageForAgent
