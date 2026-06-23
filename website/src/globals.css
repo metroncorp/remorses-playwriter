@@ -6,4 +6,5 @@
 :root {
   scrollbar-width: thin;
   scrollbar-color: gray transparent;
+  scrollbar-gutter: stable;
 }

@@ -253,6 +253,12 @@ export const app = new Spiceflow()
     },
   })
 
+  // ── Live browser view (pure client-side CDP screencast) ─────────
+  .page('/live', async () => {
+    const { default: LivePage } = await import('./pages/live.tsx')
+    return <LivePage />
+  })
+
   // Cloud browser API routes (/api/cloud/*)
   .use(cloudApp)
 
