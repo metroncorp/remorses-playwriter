@@ -199,9 +199,8 @@ export const cloudApp = new Spiceflow({ basePath: '/api/cloud' })
       const db = getDb()
       const bu = getBrowserUse()
 
-      // Batch-read subscription + cloud sessions in one D1 round-trip.
-      // These are independent reads for the same org.
-      const [activeSub, dbSessions] = await db.batch([
+      // Batch-read subscription + cloud sessions + org budget in one D1 round-trip.
+      const [activeSub, dbSessions, orgRow] = await db.batch([
         db.query.subscription.findFirst({
           where: {
             orgId: org.id,
@@ -211,6 +210,10 @@ export const cloudApp = new Spiceflow({ basePath: '/api/cloud' })
         db.query.cloudSession.findMany({
           where: { orgId: org.id },
         }),
+        db.query.org.findFirst({
+          where: { id: org.id },
+          columns: { proxySpendCents: true, proxyBudgetCents: true, proxySpendPeriodStart: true },
+        }),
       ] as const)
       if (!activeSub) {
         throw json(
@@ -218,6 +221,35 @@ export const cloudApp = new Spiceflow({ basePath: '/api/cloud' })
           { status: 403 },
         )
       }
+
+      // Detect billing period rollover and reset spend if needed.
+      // This also handles the case where all sessions were killed by the cron
+      // (no active sessions = cron returns early = period never resets).
+      // Without this, the org would be permanently blocked after a period ends.
+      const periodRolledOver = activeSub.currentPeriodStart != null
+        && orgRow?.proxySpendPeriodStart !== activeSub.currentPeriodStart
+      let proxySpendCents = orgRow?.proxySpendCents ?? 0
+      if (periodRolledOver) {
+        proxySpendCents = 0
+        await db.update(schema.org)
+          .set({
+            proxySpendCents: 0,
+            proxySpendPeriodStart: activeSub.currentPeriodStart,
+            updatedAt: Date.now(),
+          })
+          .where(orm.eq(schema.org.id, org.id))
+      }
+
+      // Block new sessions if org exceeded their proxy spend budget
+      if (orgRow && proxySpendCents >= orgRow.proxyBudgetCents) {
+        const spentDollars = (proxySpendCents / 100).toFixed(2)
+        const budgetDollars = (orgRow.proxyBudgetCents / 100).toFixed(2)
+        throw json(
+          { error: `Proxy usage budget exceeded ($${spentDollars}/$${budgetDollars}). Contact support to increase your budget.` },
+          { status: 403 },
+        )
+      }
+
       const maxSessions = activeSub.quantity
       // Check each session, collecting dead IDs for batch cleanup.
       // BU API checks run in parallel; stale pending rows are detected locally.

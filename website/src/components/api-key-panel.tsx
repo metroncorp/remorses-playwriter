@@ -8,6 +8,12 @@ import { useState } from 'react'
 import { Button } from './ui/button.tsx'
 import type { ApiKeyInfo } from '../db.ts'
 
+/** Format epoch ms to a stable YYYY-MM-DD string that matches on server and client. */
+function formatDate(epochMs: number): string {
+  const d = new Date(epochMs)
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
 export function ApiKeyPanel({
   apiKeys,
   createAction,
@@ -80,7 +86,7 @@ export function ApiKeyPanel({
                   <span className="text-xs text-muted-foreground font-mono">
                     {key.start || 'pw_'}•••
                     {' · '}
-                    Created {new Date(key.createdAt).toLocaleDateString()}
+                    Created {formatDate(key.createdAt)}
                   </span>
                 </div>
                 <form action={revokeAction}>
