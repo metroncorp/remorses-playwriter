@@ -14,6 +14,7 @@ import { normalizeAuthRedirectPath } from './auth-redirect.ts'
 import { cloudApp } from './cloud-api.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
 import { approveDevice, denyDevice, createApiKey, revokeApiKey } from './actions.tsx'
+import { enforceProxyBudgets } from './scheduled.ts'
 
 const loginQuerySchema = z.object({ callbackURL: z.string().optional() })
 
@@ -269,5 +270,8 @@ declare module 'spiceflow/react' {
 export default {
   async fetch(request: Request): Promise<Response> {
     return app.handle(request)
+  },
+  async scheduled(_controller: ScheduledController, _env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(enforceProxyBudgets())
   },
 } satisfies ExportedHandler<Env>
