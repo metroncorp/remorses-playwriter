@@ -110,10 +110,12 @@ export const app = new Spiceflow()
     const { SignOutButton } = await import('./components/sign-out-button.tsx')
     const { BillingPanel } = await import('./components/billing-panel.tsx')
 
+    const { PlaywriterLogo } = await import('./components/auth-page.tsx')
+
     return (
       <div className="mx-auto max-w-3xl px-6 py-10">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <PlaywriterLogo imageClassName="h-8" />
           <SignOutButton />
         </div>
         <div className="mb-6">
