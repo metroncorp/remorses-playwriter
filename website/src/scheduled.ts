@@ -1,15 +1,18 @@
-// Cron handler that enforces per-org proxy spend budgets.
+// Cron handler that enforces per-org cloud spend budgets.
 // Runs every minute. Does 1 D1 read + 1 batch write per invocation.
 //
 // Flow:
 //   1. Single query: all active cloud_session rows with org spend/budget
-//   2. Parallel Browser Use API calls to read proxyCost per session
-//   3. Compute deltas (current cost - lastProxyCostCents)
+//   2. Parallel Browser Use API calls to read costs per session
+//   3. Compute deltas (current total cost - lastTotalCostCents)
 //   4. Single batch write: update session costs + org cumulative spend
-//   5. If any org exceeds budget: stop their VMs + delete session rows
+//   5. If any org exceeds budget or has no subscription: stop VMs + delete rows
 //
 // Budget resets each billing period: when subscription.currentPeriodStart
-// changes (new month), proxySpendCents is reset to 0.
+// changes (new month), cloudSpendCents is reset to 0.
+//
+// Total cost = browserCost + proxyCost from Browser Use API. This ensures
+// budget enforcement covers VM runtime, not just proxy bandwidth.
 
 import { env } from 'cloudflare:workers'
 import * as orm from 'drizzle-orm'
@@ -22,9 +25,9 @@ function getBrowserUse() {
   return new BrowserUseClient({ apiKey: env.BROWSER_USE_API_KEY as string })
 }
 
-/** Parse Browser Use proxyCost string (e.g. "0.05") to integer cents. */
-function parseCostToCents(proxyCost: string): number {
-  const parsed = parseFloat(proxyCost)
+/** Parse Browser Use cost string (e.g. "0.05") to integer cents. */
+function parseCostToCents(cost: string): number {
+  const parsed = parseFloat(cost)
   if (Number.isNaN(parsed)) return 0
   return Math.round(parsed * 100)
 }
@@ -33,15 +36,18 @@ export async function enforceProxyBudgets(): Promise<void> {
   const db = getDb()
   const bu = getBrowserUse()
 
-   // 1. Single D1 read: all cloud sessions joined with org + subscription data.
-    const rows = await db
+  // 1. Single D1 read: all cloud sessions joined with org + subscription data.
+  //    LEFT JOIN subscription so we can detect orgs without active subscriptions.
+  //    Skip pending placeholder rows (they have no real BU VM yet).
+  const rows = await db
     .select({
       session: schema.cloudSession,
       orgId: schema.org.id,
-      proxySpendCents: schema.org.proxySpendCents,
-      proxyBudgetCents: schema.org.proxyBudgetCents,
-      proxySpendPeriodStart: schema.org.proxySpendPeriodStart,
+      cloudSpendCents: schema.org.cloudSpendCents,
+      cloudBudgetCents: schema.org.cloudBudgetCents,
+      cloudSpendPeriodStart: schema.org.cloudSpendPeriodStart,
       subscriptionPeriodStart: schema.subscription.currentPeriodStart,
+      subscriptionStatus: schema.subscription.status,
     })
     .from(schema.cloudSession)
     .innerJoin(schema.org, orm.eq(schema.cloudSession.orgId, schema.org.id))
@@ -49,10 +55,14 @@ export async function enforceProxyBudgets(): Promise<void> {
       orm.eq(schema.subscription.orgId, schema.org.id),
       orm.inArray(schema.subscription.status, [...ACTIVE_SUBSCRIPTION_STATUSES]),
     ))
+    .where(
+      // Skip pending placeholder rows (they have no real BU VM yet)
+      orm.not(orm.like(schema.cloudSession.browserUseSessionId, 'pending-%')),
+    )
 
   if (rows.length === 0) return
 
-  // 2. Parallel BU API calls to get current proxyCost per session.
+  // 2. Parallel BU API calls to get current costs per session.
   //    Use allSettled so one failure doesn't block the rest.
   const buResults = await Promise.allSettled(
     rows.map((row) => {
@@ -63,12 +73,13 @@ export async function enforceProxyBudgets(): Promise<void> {
   // 3. Compute per-session deltas and group by org.
   const orgDeltas = new Map<string, {
     totalDeltaCents: number
-    proxySpendCents: number
-    proxyBudgetCents: number
-    proxySpendPeriodStart: number | null
+    cloudSpendCents: number
+    cloudBudgetCents: number
+    cloudSpendPeriodStart: number | null
     subscriptionPeriodStart: number | null
+    hasActiveSubscription: boolean
     sessionUpdates: Array<{ id: string; buSessionId: string; newCostCents: number; prevCostCents: number }>
-    overBudgetSessionIds: string[]
+    killSessionIds: string[]
   }>()
 
   const deadSessionIds: string[] = []
@@ -77,7 +88,7 @@ export async function enforceProxyBudgets(): Promise<void> {
     const row = rows[i]!
     const result = buResults[i]!
 
-    // BU API failed. Only treat confirmed 404 as dead (VM is gone).
+    // BU API failed. Treat 404 and 400 (malformed ID) as dead.
     // Transient errors (500, rate limit, network) leave the row intact
     // so the next cron tick can retry.
     if (result.status === 'rejected') {
@@ -88,11 +99,12 @@ export async function enforceProxyBudgets(): Promise<void> {
       continue
     }
 
-    // Parse cost even for stopped VMs so we capture the final spend
-    // between the last cron tick and when the session ended.
+    // Parse total cost (browserCost + proxyCost) even for stopped VMs
+    // so we capture the final spend between the last cron tick and when
+    // the session ended.
     const vm = result.value
-    const currentCostCents = parseCostToCents(vm.proxyCost)
-    const deltaCents = Math.max(0, currentCostCents - row.session.lastProxyCostCents)
+    const currentCostCents = parseCostToCents(vm.browserCost) + parseCostToCents(vm.proxyCost)
+    const deltaCents = Math.max(0, currentCostCents - row.session.lastTotalCostCents)
 
     if (vm.status !== 'active') {
       deadSessionIds.push(row.session.id)
@@ -102,12 +114,13 @@ export async function enforceProxyBudgets(): Promise<void> {
     if (!orgEntry) {
       orgEntry = {
         totalDeltaCents: 0,
-        proxySpendCents: row.proxySpendCents,
-        proxyBudgetCents: row.proxyBudgetCents,
-        proxySpendPeriodStart: row.proxySpendPeriodStart,
+        cloudSpendCents: row.cloudSpendCents,
+        cloudBudgetCents: row.cloudBudgetCents,
+        cloudSpendPeriodStart: row.cloudSpendPeriodStart,
         subscriptionPeriodStart: row.subscriptionPeriodStart,
+        hasActiveSubscription: row.subscriptionStatus != null,
         sessionUpdates: [],
-        overBudgetSessionIds: [],
+        killSessionIds: [],
       }
       orgDeltas.set(row.orgId, orgEntry)
     }
@@ -117,12 +130,12 @@ export async function enforceProxyBudgets(): Promise<void> {
       id: row.session.id,
       buSessionId: row.session.browserUseSessionId,
       newCostCents: currentCostCents,
-      prevCostCents: row.session.lastProxyCostCents,
+      prevCostCents: row.session.lastTotalCostCents,
     })
   }
 
   // 4. Build batch writes: update session costs + org spend.
-  //    Detect orgs over budget and queue their sessions for termination.
+  //    Detect orgs over budget or without subscription and queue termination.
   //
   //    Uses atomic SQL increments for org spend to avoid race conditions
   //    if two cron invocations overlap. The session baseline update uses a
@@ -132,30 +145,28 @@ export async function enforceProxyBudgets(): Promise<void> {
 
   for (const [orgId, entry] of orgDeltas) {
     // Detect billing period rollover: if the subscription's currentPeriodStart
-    // differs from the org's stored proxySpendPeriodStart, a new billing cycle
+    // differs from the org's stored cloudSpendPeriodStart, a new billing cycle
     // started. Reset cumulative spend to 0 and start fresh.
     const periodRolledOver = entry.subscriptionPeriodStart != null
-      && entry.proxySpendPeriodStart !== entry.subscriptionPeriodStart
+      && entry.cloudSpendPeriodStart !== entry.subscriptionPeriodStart
 
     if (periodRolledOver) {
       // Reset spend for new billing period, then add this tick's delta
       statements.push(
         db.update(schema.org)
           .set({
-            proxySpendCents: entry.totalDeltaCents,
-            proxySpendPeriodStart: entry.subscriptionPeriodStart,
+            cloudSpendCents: entry.totalDeltaCents,
+            cloudSpendPeriodStart: entry.subscriptionPeriodStart,
             updatedAt: Date.now(),
           })
           .where(orm.eq(schema.org.id, orgId)),
       )
     } else if (entry.totalDeltaCents > 0) {
       // Atomic increment: safe against overlapping cron invocations.
-      // If another invocation already wrote a higher value, we just add our
-      // delta on top — each delta is unique to its session baseline.
       statements.push(
         db.update(schema.org)
           .set({
-            proxySpendCents: orm.sql`${schema.org.proxySpendCents} + ${entry.totalDeltaCents}`,
+            cloudSpendCents: orm.sql`${schema.org.cloudSpendCents} + ${entry.totalDeltaCents}`,
             updatedAt: Date.now(),
           })
           .where(orm.eq(schema.org.id, orgId)),
@@ -163,27 +174,34 @@ export async function enforceProxyBudgets(): Promise<void> {
     }
 
     // Conditionally update session baselines: only advance if the baseline
-    // hasn't already been updated by a concurrent cron run. The WHERE clause
-    // ensures we don't overwrite a value that another invocation already advanced.
+    // hasn't already been updated by a concurrent cron run.
     for (const su of entry.sessionUpdates) {
       statements.push(
         db.update(schema.cloudSession)
-          .set({ lastProxyCostCents: su.newCostCents })
+          .set({ lastTotalCostCents: su.newCostCents })
           .where(orm.and(
             orm.eq(schema.cloudSession.id, su.id),
-            orm.eq(schema.cloudSession.lastProxyCostCents, su.prevCostCents),
+            orm.eq(schema.cloudSession.lastTotalCostCents, su.prevCostCents),
           )),
       )
     }
 
-    // Check if org exceeded budget. For overlapping cron safety we read
-    // the pessimistic value: current DB spend + our delta.
+    // Kill sessions if org has no active subscription (cancelled/expired)
+    if (!entry.hasActiveSubscription) {
+      for (const su of entry.sessionUpdates) {
+        entry.killSessionIds.push(su.id)
+      }
+      continue
+    }
+
+    // Kill sessions if org exceeded budget. For overlapping cron safety
+    // we read the pessimistic value: current DB spend + our delta.
     const estimatedSpend = periodRolledOver
       ? entry.totalDeltaCents
-      : entry.proxySpendCents + entry.totalDeltaCents
-    if (estimatedSpend >= entry.proxyBudgetCents) {
+      : entry.cloudSpendCents + entry.totalDeltaCents
+    if (estimatedSpend >= entry.cloudBudgetCents) {
       for (const su of entry.sessionUpdates) {
-        entry.overBudgetSessionIds.push(su.id)
+        entry.killSessionIds.push(su.id)
       }
     }
   }
@@ -201,14 +219,14 @@ export async function enforceProxyBudgets(): Promise<void> {
     await db.batch(statements as [typeof statements[0], ...typeof statements])
   }
 
-  // 6. Kill VMs for over-budget orgs. Done after D1 writes so the spend
-  //    is recorded even if the stop calls fail.
+  // 6. Kill VMs for over-budget or subscription-less orgs. Done after D1
+  //    writes so the spend is recorded even if the stop calls fail.
   const killPromises: Promise<unknown>[] = []
-  const overBudgetSessionIds: string[] = []
+  const killSessionIds: string[] = []
 
   for (const [, entry] of orgDeltas) {
-    if (entry.overBudgetSessionIds.length === 0) continue
-    overBudgetSessionIds.push(...entry.overBudgetSessionIds)
+    if (entry.killSessionIds.length === 0) continue
+    killSessionIds.push(...entry.killSessionIds)
     for (const su of entry.sessionUpdates) {
       killPromises.push(
         bu.stopBrowser(su.buSessionId).catch(() => {
@@ -222,8 +240,8 @@ export async function enforceProxyBudgets(): Promise<void> {
   if (killPromises.length > 0) {
     await Promise.allSettled(killPromises)
   }
-  if (overBudgetSessionIds.length > 0) {
+  if (killSessionIds.length > 0) {
     await db.delete(schema.cloudSession)
-      .where(orm.inArray(schema.cloudSession.id, overBudgetSessionIds))
+      .where(orm.inArray(schema.cloudSession.id, killSessionIds))
   }
 }
