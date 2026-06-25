@@ -117,13 +117,13 @@ function ArrowDownIcon() {
   )
 }
 
-function HeroBackground() {
+function HeroBackground({ dotColor = 'rgba(255, 106, 0, 0.7)' }: { dotColor?: string }) {
   return (
     <VideoBackgroundShader
       src='/assets/hero-bg.mp4'
       className='absolute inset-0 w-full h-full'
       canvasClassName='dark:opacity-60 opacity-40'
-      dotColor='rgba(255, 149, 0, 0.7)'
+      dotColor={dotColor}
       dotSize={6}
       minDotSize={1}
       dotMargin={1}
@@ -211,7 +211,7 @@ export function HeroSection() {
 export function CloudHeroSection() {
   return (
     <div className='relative mt-2 lg:mt-4 mb-4 lg:mb-6 w-screen ml-[calc(-50vw+50%)] flex flex-col items-center overflow-hidden'>
-      <HeroBackground />
+      <HeroBackground dotColor='rgba(255, 50, 50, 0.7)' />
 
       {/* Foreground content */}
       <div className='relative z-[2] flex flex-col items-center justify-center px-6 pt-10 sm:pt-14 pb-4'>
